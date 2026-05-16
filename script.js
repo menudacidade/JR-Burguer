@@ -49,7 +49,7 @@ const BURGERS = [
 ====================================================== */
 const DRINKS = [
   { id: 101, name: "Coca-Cola Original (2L)", price: 15.0, image: "coca cola original.png", badge: null },
-  { id: 102, name: "Coca-Cola Zero (2L)", price: 15.0, image: "coca cola zero .png", badge: null },
+  { id: 102, name: "Coca-Cola Zero (Lata 350ml)", price: 6.0, image: "coca cola zero.png", badge: null },
   { id: 103, name: "Coca-Cola Lata (350ml)", price: 6.0, image: "coca lata.png", badge: null },
   { id: 104, name: "Guaraná (Lata 350ml)", price: 6.0, image: "guaraná lata.png", badge: null },
   { id: 105, name: "Fanta Laranja (Lata 350ml)", price: 6.0, image: "fanta laranja.png", badge: null },
@@ -57,11 +57,24 @@ const DRINKS = [
 ];
 
 /* ======================================================
+  DADOS — SOBREMESAS (SOB CONSULTA)
+====================================================== */
+const DESSERTS = [
+  {
+    id: 201,
+    name: "Cone Recheado (sabor a consultar)",
+    desc: "Consulte no WhatsApp os sabores disponiveis no momento.",
+    price: 10.0,
+    image: "conessss.png"
+  }
+];
+
+/* ======================================================
    CONFIGURAÇÕES
 ====================================================== */
 const BANNER_IMAGE    = "banner cardápio.png";
 const PROFILE_IMAGE   = "logojrburguer.jpeg";
-const WHATSAPP_NUMBER = "5542999067042";
+const WHATSAPP_NUMBER = "5542998462451";
 
 /* ======================================================
    ESTADO GLOBAL
@@ -75,6 +88,12 @@ let modalQty       = 1;
 ====================================================== */
 function fmt(value) {
   return "R$ " + value.toFixed(2).replace(".", ",");
+}
+
+function gerarNumeroPedido() {
+  const ms = Date.now();
+  const r = Math.floor(Math.random() * 1000);
+  return `${ms}${String(r).padStart(3, "0")}`.slice(-6);
 }
 
 /* ======================================================
@@ -165,6 +184,49 @@ function renderDrinks() {
       addToCart(p, 1);
       animateCardBtn(e.currentTarget);
     });
+
+    grid.appendChild(card);
+  });
+}
+
+/* ======================================================
+  RENDER — SOBREMESAS (CONSULTA SIMPLES)
+====================================================== */
+function sendDessertInquiry() {
+  const dessert = DESSERTS[0];
+  const msg = [
+    "Oi! Quero verificar a disponibilidade dos cones recheados.",
+    "",
+    `• ${dessert.name} — ${fmt(dessert.price)}`,
+    "",
+    "Quais sabores estao disponiveis hoje? 🍦"
+  ].join("\n");
+
+  window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`, "_blank");
+}
+
+function renderDesserts() {
+  const grid = document.getElementById("dessertsGrid");
+  grid.innerHTML = "";
+
+  DESSERTS.forEach((dessert) => {
+    const card = document.createElement("article");
+    card.className = "dessert-card";
+    card.dataset.id = dessert.id;
+
+    card.innerHTML = `
+      <img class="dessert-card__img" src="${encodeURI(dessert.image)}" alt="${dessert.name}" loading="lazy" />
+      <div class="dessert-card__body">
+        <p class="dessert-card__name">${dessert.name}</p>
+        <p class="dessert-card__desc">${dessert.desc}</p>
+        <span class="dessert-card__price">R$ ${dessert.price.toFixed(2).replace(".", ",")}</span>
+      </div>
+      <button type="button" class="dessert-card__check" aria-label="Verificar disponibilidade de cones">
+        Verificar disponibilidade
+      </button>
+    `;
+
+    card.querySelector(".dessert-card__check").addEventListener("click", sendDessertInquiry);
 
     grid.appendChild(card);
   });
@@ -361,20 +423,74 @@ function closeCart() {
 }
 
 /* ======================================================
-   WHATSAPP
+   WHATSAPP + MODAL DE ENDEREÇO
 ====================================================== */
-function finalizarPedido() {
+function openAddrModal() {
   if (!cart.length) { showToast("❗ Carrinho vazio!"); return; }
+  // limpa campos
+  ["addrName", "addrStreet", "addrNeighborhood", "addrRef", "addrCashChange"].forEach((id) => {
+    document.getElementById(id).value = "";
+  });
+  document.getElementById("addrPayment").value = "";
+  document.getElementById("addrCashChangeField").classList.add("is-hidden");
+  document.getElementById("addrOverlay").classList.add("open");
+  document.body.style.overflow = "hidden";
+  document.getElementById("addrName").focus();
+}
 
-  // Solicita endereço e bairro ao cliente
-  const endereco = prompt("📍 Qual é o seu endereço completo?\n(Rua, número, bairro)");
-  if (endereco === null) return; // cliente cancelou
-  const enderecoFinal = endereco.trim() || "Não informado";
+function closeAddrModal() {
+  document.getElementById("addrOverlay").classList.remove("open");
+  document.body.style.overflow = "";
+}
+
+function finalizarPedido() {
+  const nome    = document.getElementById("addrName").value.trim();
+  const rua     = document.getElementById("addrStreet").value.trim();
+  const bairro  = document.getElementById("addrNeighborhood").value.trim();
+  const pagamento = document.getElementById("addrPayment").value;
+  const troco   = document.getElementById("addrCashChange").value.trim();
+  const ref     = document.getElementById("addrRef").value.trim();
+
+  if (!rua || !bairro) {
+    showToast("❗ Informe a rua e o bairro!");
+    document.getElementById(rua ? "addrNeighborhood" : "addrStreet").focus();
+    return;
+  }
+
+  if (!pagamento) {
+    showToast("❗ Selecione a forma de pagamento!");
+    document.getElementById("addrPayment").focus();
+    return;
+  }
+
+  closeAddrModal();
 
   const lines = cart.map((i) => `• ${i.name} x${i.qty} — ${fmt(i.price * i.qty)}`);
   const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
 
+  const enderecoBloco = [
+    nome    ? `👤 *Nome:* ${nome}`          : null,
+    `🏠 *Rua:* ${rua}`,
+    `📌 *Bairro:* ${bairro}`,
+    ref     ? `🔖 *Referência:* ${ref}`     : null,
+  ].filter(Boolean).join("\n");
+
+  const pagamentoLabel = {
+    pix: "Pix",
+    dinheiro: "Dinheiro",
+    cartao: "Cartão"
+  }[pagamento];
+
+  const pagamentoBloco = [
+    `💳 *Pagamento:* ${pagamentoLabel}`,
+    pagamento === "dinheiro" ? `💵 *Troco para:* ${troco || "Não precisa de troco"}` : null
+  ].filter(Boolean).join("\n");
+
+  const numeroPedido = gerarNumeroPedido();
+
   const msg = [
+    `*PEDIDO #${numeroPedido}*`,
+    ``,
     `🍔 *JR BURGUER — Novo Pedido*`,
     ``,
     ...lines,
@@ -382,8 +498,10 @@ function finalizarPedido() {
     `💰 *Subtotal: ${fmt(total)}*`,
     `🛵 *Taxa de entrega: a confirmar pelo atendente*`,
     ``,
+    pagamentoBloco,
+    ``,
     `📍 *Endereço de entrega:*`,
-    `${enderecoFinal}`,
+    enderecoBloco,
     ``,
     `⏳ Aguardo confirmação do pedido e o valor da taxa de entrega! 😊`
   ].join("\n");
@@ -428,20 +546,26 @@ document.addEventListener("DOMContentLoaded", () => {
   assignDailyBadges();
   renderBurgers();
   renderDrinks();
+  renderDesserts();
   updateCartUI();
 
   /* Tabs de categoria */
   const tabs = document.querySelectorAll(".cat-btn");
-  const burgersSection = document.getElementById("burgersSection");
-  const drinksSection  = document.getElementById("drinksSection");
+  const sectionsByCategory = {
+    burgers: document.getElementById("burgersSection"),
+    drinks: document.getElementById("drinksSection"),
+    desserts: document.getElementById("dessertsSection")
+  };
 
   tabs.forEach((tab) => {
     tab.addEventListener("click", () => {
-      const isBurgers = tab.dataset.category === "burgers";
+      const selectedCategory = tab.dataset.category;
       tabs.forEach((t) => t.classList.remove("active"));
       tab.classList.add("active");
-      burgersSection.classList.toggle("is-hidden", !isBurgers);
-      drinksSection.classList.toggle("is-hidden", isBurgers);
+
+      Object.entries(sectionsByCategory).forEach(([category, section]) => {
+        section.classList.toggle("is-hidden", category !== selectedCategory);
+      });
     });
   });
 
@@ -482,11 +606,29 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("cartOverlay").addEventListener("click", (e) => {
     if (e.target === e.currentTarget) closeCart();
   });
-  document.getElementById("cartCheckout").addEventListener("click", finalizarPedido);
+  document.getElementById("cartCheckout").addEventListener("click", openAddrModal);
+
+  /* Modal de endereço */
+  const paymentSelect = document.getElementById("addrPayment");
+  const cashChangeField = document.getElementById("addrCashChangeField");
+  const cashChangeInput = document.getElementById("addrCashChange");
+
+  const syncPaymentFields = () => {
+    const isCash = paymentSelect.value === "dinheiro";
+    cashChangeField.classList.toggle("is-hidden", !isCash);
+    if (!isCash) cashChangeInput.value = "";
+  };
+
+  paymentSelect.addEventListener("change", syncPaymentFields);
+  document.getElementById("addrCancel").addEventListener("click", closeAddrModal);
+  document.getElementById("addrConfirm").addEventListener("click", finalizarPedido);
+  document.getElementById("addrOverlay").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) closeAddrModal();
+  });
 
   /* Teclado */
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { closeModal(); closeCart(); }
+    if (e.key === "Escape") { closeModal(); closeCart(); closeAddrModal(); }
   });
 
   /* Cart footer oculto por padrão */
